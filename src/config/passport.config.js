@@ -1,10 +1,9 @@
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const JwtStrategy = require('passport-jwt').Strategy;
-const UserModel = require('../dao/models/user.model');
-const CartModel = require('../dao/models/cart.model');
 const { createHash, isValidPassword, cookieExtractor } = require('../utils/utils');
 const { jwtSecret } = require('./config');
+const { userRepository, cartRepository } = require('../repositories');
 
 const initializePassport = () => {
     passport.use('register', new LocalStrategy(
@@ -16,15 +15,15 @@ const initializePassport = () => {
             try {
                 const { first_name, last_name, email, age } = req.body;
 
-                const existingUser = await UserModel.findOne({ email: username });
+                const existingUser = await userRepository.getByEmail(username);
                 if (existingUser) {
                     console.log('El usuario ya existe');
                     return done(null, false, { message: 'El usuario ya existe' });
                 }
 
-                const newCart = await CartModel.create({ products: [] });
+                const newCart = await cartRepository.create();
 
-                const newUser = await UserModel.create({
+                const newUser = await userRepository.create({
                     first_name,
                     last_name,
                     email,
@@ -47,7 +46,7 @@ const initializePassport = () => {
         },
         async (username, password, done) => {
             try {
-                const user = await UserModel.findOne({ email: username });
+                const user = await userRepository.getByEmail(username);
                 if (!user) {
                     console.log('Usuario no encontrado');
                     return done(null, false, { message: 'Usuario no encontrado' });
@@ -72,7 +71,7 @@ const initializePassport = () => {
         },
         async (jwtPayload, done) => {
             try {
-                const user = await UserModel.findById(jwtPayload.id);
+                const user = await userRepository.getById(jwtPayload.id);
                 if (!user) {
                     return done(null, false, { message: 'Usuario no encontrado' });
                 }

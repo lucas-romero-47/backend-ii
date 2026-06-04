@@ -1,17 +1,8 @@
 const { Router } = require('express');
-const passport = require('passport');
-const ProductModel = require('../dao/models/product.model');
+const { passportCall, authorization } = require('../middlewares/auth');
+const { productRepository } = require('../repositories');
 
 const router = Router();
-
-const passportJWT = (req, res, next) => {
-    passport.authenticate('current', { session: false }, (err, user, info) => {
-        if (err) return res.status(500).json({ status: 'error', message: 'Error interno del servidor' });
-        if (!user) return res.status(401).json({ status: 'error', message: info?.message || 'No autenticado' });
-        req.user = user;
-        next();
-    })(req, res, next);
-};
 
 router.get('/', async (req, res) => {
     try {
@@ -24,17 +15,14 @@ router.get('/', async (req, res) => {
 
         const options = {
             limit: parseInt(limit),
-            page: parseInt(page),
-            lean: true
+            skip: (parseInt(page) - 1) * parseInt(limit)
         };
 
         if (sort) {
             options.sort = { price: sort === 'asc' ? 1 : -1 };
         }
 
-        const products = await ProductModel.paginate
-            ? await ProductModel.find(filter).limit(options.limit).skip((options.page - 1) * options.limit).sort(options.sort).lean()
-            : await ProductModel.find(filter).lean();
+        const products = await productRepository.getAll(filter, options);
 
         return res.json({ status: 'success', payload: products });
     } catch (error) {
@@ -44,7 +32,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:pid', async (req, res) => {
     try {
-        const product = await ProductModel.findById(req.params.pid).lean();
+        const product = await productRepository.getById(req.params.pid);
         if (!product) {
             return res.status(404).json({ status: 'error', message: 'Producto no encontrado' });
         }
@@ -54,7 +42,8 @@ router.get('/:pid', async (req, res) => {
     }
 });
 
-router.post('/', passportJWT, async (req, res) => {
+// Solo admin puede crear productos
+router.post('/', passportCall('current'), authorization('admin'), async (req, res) => {
     try {
         const { title, description, code, price, status, stock, category, thumbnails } = req.body;
 
@@ -62,7 +51,7 @@ router.post('/', passportJWT, async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Faltan campos obligatorios' });
         }
 
-        const newProduct = await ProductModel.create({
+        const newProduct = await productRepository.create({
             title, description, code, price,
             status: status !== undefined ? status : true,
             stock, category,
@@ -75,9 +64,10 @@ router.post('/', passportJWT, async (req, res) => {
     }
 });
 
-router.put('/:pid', passportJWT, async (req, res) => {
+// Solo admin puede actualizar productos
+router.put('/:pid', passportCall('current'), authorization('admin'), async (req, res) => {
     try {
-        const updatedProduct = await ProductModel.findByIdAndUpdate(req.params.pid, req.body, { new: true });
+        const updatedProduct = await productRepository.update(req.params.pid, req.body);
         if (!updatedProduct) {
             return res.status(404).json({ status: 'error', message: 'Producto no encontrado' });
         }
@@ -87,9 +77,10 @@ router.put('/:pid', passportJWT, async (req, res) => {
     }
 });
 
-router.delete('/:pid', passportJWT, async (req, res) => {
+// Solo admin puede eliminar productos
+router.delete('/:pid', passportCall('current'), authorization('admin'), async (req, res) => {
     try {
-        const deletedProduct = await ProductModel.findByIdAndDelete(req.params.pid);
+        const deletedProduct = await productRepository.delete(req.params.pid);
         if (!deletedProduct) {
             return res.status(404).json({ status: 'error', message: 'Producto no encontrado' });
         }

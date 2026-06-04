@@ -1,46 +1,36 @@
 const { Router } = require('express');
-const passport = require('passport');
-const UserModel = require('../dao/models/user.model');
+const { passportCall, authorization } = require('../middlewares/auth');
+const { userRepository } = require('../repositories');
 const { createHash } = require('../utils/utils');
+const UserDTO = require('../dto/user.dto');
 
 const router = Router();
 
-const passportJWT = (req, res, next) => {
-    passport.authenticate('current', { session: false }, (err, user, info) => {
-        if (err) {
-            return res.status(500).json({ status: 'error', message: 'Error interno del servidor' });
-        }
-        if (!user) {
-            return res.status(401).json({ status: 'error', message: info?.message || 'No autenticado' });
-        }
-        req.user = user;
-        next();
-    })(req, res, next);
-};
-
-router.get('/', passportJWT, async (req, res) => {
+router.get('/', passportCall('current'), async (req, res) => {
     try {
-        const users = await UserModel.find().select('-password');
-        return res.json({ status: 'success', payload: users });
+        const users = await userRepository.getAll();
+        const usersDto = users.map(user => new UserDTO(user));
+        return res.json({ status: 'success', payload: usersDto });
     } catch (error) {
         return res.status(500).json({ status: 'error', message: error.message });
     }
 });
 
-router.get('/:uid', passportJWT, async (req, res) => {
+router.get('/:uid', passportCall('current'), async (req, res) => {
     try {
         const { uid } = req.params;
-        const user = await UserModel.findById(uid).select('-password');
+        const user = await userRepository.getById(uid);
         if (!user) {
             return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' });
         }
-        return res.json({ status: 'success', payload: user });
+        const userDto = new UserDTO(user);
+        return res.json({ status: 'success', payload: userDto });
     } catch (error) {
         return res.status(500).json({ status: 'error', message: error.message });
     }
 });
 
-router.put('/:uid', passportJWT, async (req, res) => {
+router.put('/:uid', passportCall('current'), async (req, res) => {
     try {
         const { uid } = req.params;
         const updateData = { ...req.body };
@@ -50,26 +40,28 @@ router.put('/:uid', passportJWT, async (req, res) => {
         }
 
         if (updateData.email) {
-            const existingUser = await UserModel.findOne({ email: updateData.email, _id: { $ne: uid } });
-            if (existingUser) {
+            const existingUser = await userRepository.getByEmail(updateData.email);
+            if (existingUser && existingUser._id.toString() !== uid) {
                 return res.status(400).json({ status: 'error', message: 'El email ya está en uso' });
             }
         }
 
-        const updatedUser = await UserModel.findByIdAndUpdate(uid, updateData, { new: true }).select('-password');
+        const updatedUser = await userRepository.update(uid, updateData);
         if (!updatedUser) {
             return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' });
         }
-        return res.json({ status: 'success', message: 'Usuario actualizado', payload: updatedUser });
+
+        const userDto = new UserDTO(updatedUser);
+        return res.json({ status: 'success', message: 'Usuario actualizado', payload: userDto });
     } catch (error) {
         return res.status(500).json({ status: 'error', message: error.message });
     }
 });
 
-router.delete('/:uid', passportJWT, async (req, res) => {
+router.delete('/:uid', passportCall('current'), async (req, res) => {
     try {
         const { uid } = req.params;
-        const deletedUser = await UserModel.findByIdAndDelete(uid);
+        const deletedUser = await userRepository.delete(uid);
         if (!deletedUser) {
             return res.status(404).json({ status: 'error', message: 'Usuario no encontrado' });
         }

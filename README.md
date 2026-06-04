@@ -1,6 +1,15 @@
-# Ecommerce Backend - Pre-Entrega 1
+# Ecommerce Backend - Entrega Final
 
-Backend de un ecommerce con CRUD de usuarios, autenticación y autorización usando JWT, Passport y bcrypt.
+Backend completo de un ecommerce con patrón Repository, DAOs, DTOs, Mailing y un sistema de Autorización basado en roles (Admin/User).
+
+## Características principales
+
+- **Patrón Repository y DAOs**: Capas abstraídas para separar la lógica de negocio de la lógica de persistencia.
+- **DTOs**: Transferencia segura de datos de usuario (se evita enviar información sensible como la contraseña).
+- **Mailing**: Envío de correos electrónicos mediante la API HTTP de **Resend** (sin SDKs externos) para tickets de compra y recuperación de contraseña.
+- **Sistema de Compra**: Modelo `Ticket` que valida stock en tiempo real, descuenta productos, maneja compras parciales y envía confirmación por email.
+- **Recuperación de Contraseña**: Generación de JWT temporal (1h) para el restablecimiento seguro de la contraseña.
+- **Autorización por Roles**: Middleware que verifica permisos (ej. solo el admin crea productos, solo el user agrega al carrito).
 
 ## Tecnologías
 
@@ -8,7 +17,7 @@ Backend de un ecommerce con CRUD de usuarios, autenticación y autorización usa
 - **MongoDB** + **Mongoose**
 - **Passport** (Local + JWT)
 - **bcrypt** (hasheo de contraseñas)
-- **JWT** (JSON Web Tokens)
+- **Resend** (envío de emails transaccionales)
 
 ## Instalación
 
@@ -21,20 +30,18 @@ npm install
 - **Node.js** v18+
 - **MongoDB** corriendo localmente en `mongodb://127.0.0.1:27017`
 
-### Instalar MongoDB localmente
+## Configuración (.env)
 
-1. Descargar MongoDB Community Server desde [mongodb.com](https://www.mongodb.com/try/download/community)
-2. Instalar y asegurarse de que el servicio `mongod` esté corriendo
-
-## Configuración
-
-Crear un archivo `.env` en la raíz del proyecto (ya incluido):
+Renombrar el archivo `.env.example` a `.env` y configurar las variables:
 
 ```env
 PORT=8080
 MONGO_URL=mongodb://127.0.0.1:27017/ecommerce
 JWT_SECRET=s3cr3tK3yC0d3rH0us3_2026
 COOKIE_NAME=coderCookieToken
+RESEND_API_KEY=tu_api_key_de_resend
+MAIL_FROM=onboarding@resend.dev
+BASE_URL=http://localhost:8080
 ```
 
 ## Ejecución
@@ -45,102 +52,44 @@ npm start
 
 El servidor se levanta en `http://localhost:8080`
 
-## Endpoints
+## Endpoints Principales
 
-### Sessions (`/api/sessions`)
-
+### Auth & Sessions (`/api/sessions`)
 | Método | Ruta | Descripción | Auth |
 |--------|------|-------------|------|
-| POST | `/api/sessions/register` | Registrar usuario | No |
-| POST | `/api/sessions/login` | Iniciar sesión (genera JWT en cookie) | No |
-| GET | `/api/sessions/current` | Obtener usuario logueado | JWT |
-| POST | `/api/sessions/logout` | Cerrar sesión | No |
+| POST | `/register` | Registrar usuario | No |
+| POST | `/login` | Iniciar sesión (genera JWT) | No |
+| GET | `/current` | Obtener DTO del usuario logueado | JWT |
+| POST | `/forgot-password` | Envía email con enlace de recuperación | No |
+| POST | `/reset-password` | Restablece contraseña (requiere token JWT) | No |
+| POST | `/logout` | Cerrar sesión | No |
 
-### Users (`/api/users`)
-
+### Productos (`/api/products`)
 | Método | Ruta | Descripción | Auth |
 |--------|------|-------------|------|
-| GET | `/api/users` | Listar usuarios | JWT |
-| GET | `/api/users/:uid` | Obtener usuario por ID | JWT |
-| PUT | `/api/users/:uid` | Actualizar usuario | JWT |
-| DELETE | `/api/users/:uid` | Eliminar usuario | JWT |
+| GET | `/` | Listar productos (con paginación/filtros) | No |
+| POST | `/` | Crear producto | Admin |
+| PUT | `/:pid` | Actualizar producto | Admin |
+| DELETE | `/:pid` | Eliminar producto | Admin |
 
-### Products (`/api/products`)
-
+### Carritos & Compras (`/api/carts`)
 | Método | Ruta | Descripción | Auth |
 |--------|------|-------------|------|
-| GET | `/api/products` | Listar productos | No |
-| GET | `/api/products/:pid` | Obtener producto por ID | No |
-| POST | `/api/products` | Crear producto | JWT |
-| PUT | `/api/products/:pid` | Actualizar producto | JWT |
-| DELETE | `/api/products/:pid` | Eliminar producto | JWT |
+| POST | `/` | Crear carrito vacío | No |
+| POST | `/:cid/product/:pid` | Agregar producto al carrito | User |
+| POST | `/:cid/purchase` | Finalizar compra, generar ticket y enviar email | User |
 
-### Carts (`/api/carts`)
-
-| Método | Ruta | Descripción | Auth |
-|--------|------|-------------|------|
-| POST | `/api/carts` | Crear carrito | No |
-| GET | `/api/carts/:cid` | Obtener carrito | No |
-| POST | `/api/carts/:cid/product/:pid` | Agregar producto al carrito | JWT |
-| DELETE | `/api/carts/:cid/product/:pid` | Eliminar producto del carrito | JWT |
-| DELETE | `/api/carts/:cid` | Vaciar carrito | JWT |
-
-## Ejemplo de uso
-
-### Registrar usuario
-
-```bash
-POST /api/sessions/register
-Content-Type: application/json
-
-{
-  "first_name": "Lucas",
-  "last_name": "Pérez",
-  "email": "lucas@mail.com",
-  "age": 25,
-  "password": "abc123"
-}
-```
-
-### Login
-
-```bash
-POST /api/sessions/login
-Content-Type: application/json
-
-{
-  "email": "lucas@mail.com",
-  "password": "abc123"
-}
-```
-
-### Obtener usuario actual
-
-```bash
-GET /api/sessions/current
-# La cookie JWT se envía automáticamente
-```
-
-## Estructura del proyecto
+## Estructura de la Arquitectura
 
 ```
 src/
-├── config/
-│   ├── config.js               # Variables de entorno
-│   └── passport.config.js      # Estrategias de Passport
-├── dao/
-│   └── models/
-│       ├── user.model.js        # Modelo User
-│       ├── cart.model.js         # Modelo Cart
-│       └── product.model.js     # Modelo Product
-├── routes/
-│   ├── sessions.router.js       # Auth (register, login, current)
-│   ├── users.router.js          # CRUD de usuarios
-│   ├── products.router.js       # CRUD de productos
-│   └── carts.router.js          # CRUD de carritos
-├── middlewares/
-│   └── auth.js                  # Middleware de autorización
-├── utils/
-│   └── utils.js                 # Hasheo, JWT, cookie extractor
-└── app.js                       # Entry point
+├── config/              # Variables de entorno y config de Passport
+├── dao/                 # Data Access Objects para interacción con MongoDB
+│   └── models/          # Modelos de Mongoose (User, Product, Cart, Ticket)
+├── dto/                 # Data Transfer Objects (UserDTO)
+├── middlewares/         # Middleware centralizado de auth y autorización (passportCall)
+├── repositories/        # Lógica de negocio (Product, User, Cart, Ticket)
+├── routes/              # Controladores de rutas
+├── services/            # Servicios externos (MailService)
+└── utils/               # Utilidades de encriptación y JWT
 ```
